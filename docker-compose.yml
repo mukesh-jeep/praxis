@@ -1,0 +1,49 @@
+services:
+
+  # ── Backend — FastAPI ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: medical-rag-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env                      # GROQ_API_KEY, GOOGLE_API_KEY, QDRANT_URL, QDRANT_API_KEY
+    environment:
+      - HF_HOME=/cache/huggingface
+      - PADDLEOCR_HOME=/cache/paddleocr
+    volumes:
+      # Persist downloaded model weights across container restarts
+      - hf_cache:/cache/huggingface
+      - paddle_cache:/cache/paddleocr
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s          # Give time for model loads on first start
+
+  # ── Frontend — Streamlit ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: medical-rag-frontend
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8000   # Docker service name — not localhost
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    depends_on:
+      backend:
+        condition: service_healthy        # Wait until backend passes health check
+
+# ── Named volumes for model caches ────────────────────────────────────────────
+volumes:
+  hf_cache:
+    driver: local
+  paddle_cache:
+    driver: local

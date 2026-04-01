@@ -1,0 +1,52 @@
+# ── Stage: builder ────────────────────────────────────────────────────────────
+# Install dependencies in a layer that won't bust the cache unless requirements change
+FROM python:3.11-slim AS builder
+
+WORKDIR /install
+
+# System libs required by PaddleOCR / OpenCV / Pillow
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxrender1 \
+    libxext6 \
+    libgl1 \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install/deps -r requirements.txt
+
+
+# ── Stage: runtime ────────────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Copy only the system libs we need (not build-essential etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxrender1 \
+    libxext6 \
+    libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder
+COPY --from=builder /install/deps /usr/local
+
+# Copy application code
+COPY backend/    ./backend/
+COPY ingestion/  ./ingestion/
+
+# Model cache dirs — these are mounted as named volumes so models
+# survive container restarts and are never re-downloaded
+ENV HF_HOME=/cache/huggingface
+ENV PADDLEOCR_HOME=/cache/paddleocr
+
+EXPOSE 8000
+
+# Uvicorn: 1 worker in dev; scale with --workers N or gunicorn in prod
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
