@@ -1,22 +1,3 @@
-"""
-Offline ingestion pipeline — Docling (text PDF) + PaddleOCR (scanned) → Qdrant.
-
-Why Docling:
-  - IBM research project built for scientific/medical PDFs
-  - Handles multi-column layouts, tables, figures, footnotes natively
-  - Outputs clean Markdown — preserves structure better than raw pymupdf text
-  - Built-in page classification: routes text vs scanned pages automatically
-
-Why PaddleOCR fallback:
-  - Docling's internal OCR handles most scanned docs well
-  - PaddleOCR here serves as a manual fallback for pages Docling marks as low-confidence
-
-Usage:
-    python ingestion/ingest_pipeline.py --input-dir ./my_pdfs [--use-ocr]
-
-    --use-ocr : force PaddleOCR pass on every page regardless of text confidence
-               (useful for mixed or fully scanned document sets)
-"""
 
 import argparse
 import hashlib
@@ -33,7 +14,6 @@ CHUNK_SIZE    = 800
 CHUNK_OVERLAP = 100
 
 
-# ── chunker ───────────────────────────────────────────────────────────────────
 
 def chunk_text(text: str) -> List[str]:
     chunks, start = [], 0
@@ -68,7 +48,7 @@ def pdf_to_text_paddle(path: Path) -> str:
     import numpy as np
     from paddleocr import PaddleOCR
 
-    ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False, use_gpu=False)
+    ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False, use_gpu=True)
     doc = fitz.open(str(path))
 
     pages = []

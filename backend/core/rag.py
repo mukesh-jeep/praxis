@@ -1,14 +1,3 @@
-"""
-RAG retrieval layer — Qdrant Cloud + NeuML/pubmedbert-base-embeddings.
-
-Why these choices:
-  - NeuML/pubmedbert-base-embeddings: trained entirely on PubMed; understands
-    medical terminology far better than general-purpose models.
-  - Qdrant Cloud (free tier): fast, hybrid search-ready, production-grade.
-  - Cosine distance: standard for sentence-transformer-style embeddings.
-
-Embedding dimension: 768  (PubMedBERT base)
-"""
 
 import os
 import uuid
@@ -78,13 +67,6 @@ def _ensure_collection(client: QdrantClient) -> None:
 # ── public API ────────────────────────────────────────────────────────────────
 
 def retrieve_chunks(query: str, top_k: int = 10) -> List[str]:
-    """
-    Return up to top_k text chunks most similar to the query.
-    Returns an empty list if the collection is empty.
-
-    Note: top_k defaults to 10 so the reranker has enough candidates to
-    re-score.  The chat router passes the reranked subset to the LLM.
-    """
     client   = _get_client()
     embedder = _get_embedder()
 
@@ -94,22 +76,18 @@ def retrieve_chunks(query: str, top_k: int = 10) -> List[str]:
 
     query_vector = embedder.encode(query).tolist()
 
-    results = client.search(
+    response = client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=min(top_k, count),
         with_payload=True,
     )
+    results = response.points
 
     return [hit.payload.get("text", "") for hit in results if hit.payload]
 
 
 def add_chunks(texts: List[str], metadatas: List[dict] | None = None) -> None:
-    """
-    Embed and upsert chunks into Qdrant.
-    IDs are generated from the metadata source+chunk_index for idempotency;
-    if no metadata is given, random UUIDs are used.
-    """
     client   = _get_client()
     embedder = _get_embedder()
 
@@ -128,7 +106,12 @@ def add_chunks(texts: List[str], metadatas: List[dict] | None = None) -> None:
         payload = {**meta, "text": text}
         points.append(PointStruct(id=point_id, vector=vec, payload=payload))
 
-    client.upsert(collection_name=COLLECTION_NAME, points=points)
+    batch_size = 100
+    for i in range(0, len(points), batch_size):
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=points[i : i + batch_size]
+        )
 
 
 def collection_count() -> int:

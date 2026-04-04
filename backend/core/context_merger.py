@@ -1,14 +1,3 @@
-"""
-Context merger — assembles the full message list sent to the LLM.
-
-Sources combined (in order):
-  1. System prompt
-  2. RAG knowledge-base excerpts (as a second system block)
-  3. Last N turns of session history
-  4. Current user turn (plain text, text+doc, or multimodal image)
-
-Token budgets are enforced via character counts (crude but fast).
-"""
 
 MAX_FILE_CHARS = 6_000   # ~1 500 tokens — safe for Groq flash context
 MAX_RAG_CHARS  = 4_000   # top RAG chunks combined
@@ -30,16 +19,6 @@ def build_messages(
     uploaded_file: dict | None,
     rag_chunks: list,
 ) -> list:
-    """
-    Returns an OpenAI-compatible message list ready to hand to the LLM.
-
-    Parameters
-    ----------
-    session_history : list of {"role", "content"} dicts from session.py
-    user_query      : the raw question string
-    uploaded_file   : dict from file_processor.py or None
-    rag_chunks      : list of strings from rag.py
-    """
     messages: list[dict] = []
 
     # ── 1. system prompt ──────────────────────────────────────────────────────

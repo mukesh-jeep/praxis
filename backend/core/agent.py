@@ -67,12 +67,6 @@ def _chat_text(messages: list) -> str:
 
 
 def _chat_vision(messages: list) -> str:
-    """
-    Gemini 2.0 Flash vision completion (google-genai SDK).
-
-    Converts the OpenAI-format multimodal message list into Gemini's
-    content format, combining system context with the user's image + text.
-    """
     client = _get_gemini()
 
     # ── Build Gemini content parts ────────────────────────────────────────────

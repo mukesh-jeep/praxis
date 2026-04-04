@@ -1,9 +1,3 @@
-"""
-Streamlit frontend for the Medical RAG Assistant.
-
-Run:
-    streamlit run frontend/app.py
-"""
 
 import os
 import streamlit as st

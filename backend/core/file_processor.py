@@ -1,15 +1,3 @@
-"""
-Runtime file processor.
-
-PDF  → text via pymupdf (text layers); PaddleOCR fallback for scanned pages
-DOCX → text via docx2txt
-Image→ base64-encoded bytes (sent directly to the vision LLM)
-
-Why PaddleOCR over Tesseract:
-  - Significantly higher accuracy on medical scans (printed forms, lab reports)
-  - Better layout analysis (handles multi-column, tables)
-  - No external binary install needed — pure Python wheel
-"""
 
 import io
 import base64
@@ -33,7 +21,7 @@ def _get_paddle_ocr():
             use_angle_cls=True,
             lang="en",
             show_log=False,         # suppress verbose paddle output
-            use_gpu=False,          # set True if CUDA GPU available
+            use_gpu=True,          # set True if CUDA GPU available
         )
     return _paddle_ocr
 

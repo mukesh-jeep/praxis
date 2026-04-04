@@ -1,12 +1,3 @@
-"""
-In-memory session store.
-
-Maps session_id → ordered list of message dicts.
-Each dict is:  {"role": "user"|"assistant", "content": str | list}
-
-Content is a list when the turn contained multimodal data (images).
-Both formats are compatible with the Groq/OpenAI chat API.
-"""
 
 from collections import defaultdict
 from typing import List

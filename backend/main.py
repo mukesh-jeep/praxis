@@ -1,10 +1,24 @@
-"""
-FastAPI application entry point.
-"""
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import chat, ingest
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Preloading models and clients...")
+    from backend.core.rag import _get_client, _get_embedder
+    from backend.core.reranker import _get_reranker
+    from backend.core.agent import _get_groq, _get_gemini
+
+    # Calling the lazy loading functions will instantiate them globally
+    _get_client()
+    _get_embedder()
+    _get_reranker()
+    _get_groq()
+    _get_gemini()
+    print("Finished preloading models.")
+    yield
 
 app = FastAPI(
     title="Medical RAG Assistant",
@@ -13,6 +27,7 @@ app = FastAPI(
         "session memory, and ChromaDB-backed knowledge retrieval."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Allow all origins during development — restrict in production
