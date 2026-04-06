@@ -25,18 +25,17 @@ services:
       retries: 3
       start_period: 60s          # Give time for model loads on first start
 
-  # ── Frontend — Streamlit ─────────────────────────────────────────────────────
+  # ── Frontend — Next.js ─────────────────────────────────────────────────────
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: medical-rag-frontend
+      context: ./frontend-next
+      dockerfile: Dockerfile
+    container_name: medical-rag-frontend-next
     restart: unless-stopped
     ports:
-      - "8501:8501"
+      - "3000:3000"
     environment:
       - BACKEND_URL=http://backend:8000   # Docker service name — not localhost
-      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
     depends_on:
       backend:
         condition: service_healthy        # Wait until backend passes health check

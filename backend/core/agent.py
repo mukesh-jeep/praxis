@@ -1,15 +1,19 @@
 
 import os
 import base64
+import logging
 from typing import TypedDict
 
 from dotenv import load_dotenv
 from groq import Groq
 from google import genai
 from google.genai import types as genai_types
+from google.genai.errors import ClientError as GeminiClientError
 from langgraph.graph import StateGraph, END
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ── Groq client (text) ────────────────────────────────────────────────────────
 
@@ -50,8 +54,9 @@ def _get_gemini() -> genai.Client:
 
 # ── LLM call helpers ──────────────────────────────────────────────────────────
 
-TEXT_MODEL   = "llama-3.3-70b-versatile"   # Groq — best free text model
-VISION_MODEL = "gemini-2.0-flash"           # Google — best free vision model
+TEXT_MODEL          = "llama-3.1-8b-instant"    # Groq — text queries
+VISION_MODEL        = "gemini-2.0-flash-lite"   # Google — higher free-tier quota
+VISION_MODEL_FALLBACK = "gemini-2.0-flash"       # Fallback if lite is also throttled
 
 
 def _chat_text(messages: list) -> str:
@@ -66,12 +71,9 @@ def _chat_text(messages: list) -> str:
     return response.choices[0].message.content or ""
 
 
-def _chat_vision(messages: list) -> str:
-    client = _get_gemini()
-
-    # ── Build Gemini content parts ────────────────────────────────────────────
+def _build_gemini_parts(messages: list) -> list:
+    """Convert the agent message list into Gemini content parts."""
     parts: list = []
-
     for msg in messages:
         if msg["role"] == "system":
             parts.append(msg["content"])
@@ -94,12 +96,74 @@ def _chat_vision(messages: list) -> str:
                                 data=img_bytes, mime_type=mime
                             )
                         )
+    return parts
 
-    response = client.models.generate_content(
-        model=VISION_MODEL,
-        contents=parts,
+
+def _chat_vision(messages: list) -> str:
+    """Gemini vision call with two-level quota fallback.
+
+    Attempt order:
+      1. gemini-2.0-flash-lite  (higher free-tier quota)
+      2. gemini-2.0-flash       (if lite is also throttled)
+      3. Groq text fallback     (with a notice to the user)
+    """
+    client = _get_gemini()
+    parts  = _build_gemini_parts(messages)
+
+    for model in (VISION_MODEL, VISION_MODEL_FALLBACK):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=parts,
+            )
+            return response.text or ""
+        except GeminiClientError as exc:
+            if exc.code == 429:
+                logger.warning(
+                    "Gemini quota exhausted for model %s (429). "
+                    "Trying next option.", model
+                )
+                continue          # try the next model in the loop
+            raise                 # re-raise non-quota errors immediately
+
+    # Both Gemini models are throttled — fall back to Groq text-only
+    logger.warning(
+        "All Gemini models rate-limited. Falling back to Groq text response."
     )
-    return response.text or ""
+    # Build a text-only message list (strip image parts, keep text)
+    text_messages: list = []
+    for msg in messages:
+        if msg["role"] == "system":
+            text_messages.append(msg)
+        elif msg["role"] == "user":
+            content = msg["content"]
+            if isinstance(content, str):
+                text_messages.append(msg)
+            elif isinstance(content, list):
+                text_parts = " ".join(
+                    item["text"] for item in content if item.get("type") == "text"
+                )
+                has_image = any(
+                    item.get("type") == "image_url" for item in content
+                )
+                note = (
+                    "\n\n[Note: An image was attached but vision analysis is "
+                    "temporarily unavailable due to API quota limits. "
+                    "Please try again in a few minutes.]" if has_image else ""
+                )
+                text_messages.append(
+                    {"role": "user", "content": text_parts + note}
+                )
+        else:
+            text_messages.append(msg)
+
+    groq_answer = _chat_text(text_messages)
+    return (
+        groq_answer
+        + "\n\n---\n*⚠️ Image analysis is temporarily unavailable (Gemini API "
+        "quota exhausted). The response above is based on your text query only. "
+        "Please try again in a few minutes.*"
+    )
 
 
 def _is_vision_turn(messages: list) -> bool:
